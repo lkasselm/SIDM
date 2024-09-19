@@ -27,7 +27,7 @@ import config as cfg # for global variables
 import cosmo as co # for cosmology related functions
 
 import numpy as np
-from scipy.optimize import brentq,minimize
+from scipy.optimize import brentq,minimize,root
 from scipy.integrate import quad,odeint
 from scipy.special import erf,gamma,gammainc,gammaincc 
 def gamma_lower(a,x):
@@ -117,7 +117,7 @@ class NFW(object):
              Arthur Fangzhou Jiang (2016-10-30, HUJI)
              Arthur Fangzhou Jiang (2019-08-24, HUJI)
     """
-    def __init__(self,M,c,Delta=200.,z=0.):
+    def __init__(self,M=None,c=None,rhos=None,rs=None,Delta=200.,z=0.):
         """
         Initialize NFW profile.
         
@@ -133,19 +133,33 @@ class NFW(object):
                 density of the universe (default is 200.)         
             z: redshift (float)
         """
-        # input attributes
-        self.Mh = M 
-        self.ch = c
         self.Deltah = Delta
         self.z = z
-        #
-        # derived attributes
         self.rhoc = co.rhoc(z,cfg.h,cfg.Om,cfg.OL)
         self.rhoh = self.Deltah * self.rhoc
-        self.rh = (3.*self.Mh / (cfg.FourPi*self.rhoh))**(1./3.)
-        self.rs = self.rh / self.ch
+        if M is not None and c is not None:
+            self.Mh = M 
+            self.ch = c
+            self.rh = (3.*self.Mh / (cfg.FourPi*self.rhoh))**(1./3.)
+            self.rs = self.rh / self.ch
+            self.rho0 = self.rhoc*self.Deltah/3.*self.ch**3./self.f(self.ch)
+        elif rhos is not None and rs is not None:
+            # input attributes:
+            self.rho0 = rhos
+            self.rs = rs
+            # calculate concentration parameter:
+            def f(c):
+                return c**3 * self.Deltah * self.rhoc/( 3 * self.f(c) ) - self.rho0
+            # the concentration parameter satisfies f(c) = 0, so find root of function:
+            self.ch = root(f,1).x[0]
+            self.rh = self.rs * self.ch
+            # calculate virial mass
+            self.Mh = self.M(self.rh)
+        else:
+            raise Exception('Need to specify either M and c or rs and rhos')
+        #
+        # derived attributes
         self.rmax = self.rs * 2.163
-        self.rho0 = self.rhoc*self.Deltah/3.*self.ch**3./self.f(self.ch)
         self.Phi0 = -cfg.FourPiG*self.rho0*self.rs**2.     
         self.Vmax = self.Vcirc(self.rmax)
         self.s001 = self.s(0.01*self.rh)
